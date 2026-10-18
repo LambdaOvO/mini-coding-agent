@@ -7,7 +7,9 @@ authors = [
     { name = "LambdaOvO", email = "2499487471@qq.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai>=3.35.1",
+]
 
 [project.scripts]
 mini-coding-agent = "mini_coding_agent:main"
@@ -15,3 +17,8 @@ mini-coding-agent = "mini_coding_agent:main"
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
