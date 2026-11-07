@@ -4,9 +4,33 @@ from openai.types.chat import (
     ChatCompletionMessageParam,
 )
 import json
+from pathlib import Path
 
 from mini_coding_agent.config import load_api_key
 from mini_coding_agent.calculator import execute_tool
+
+
+def save_message(
+        path: Path,
+        message: list[ChatCompletionMessageParam],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    message_json = json.dumps(message, ensure_ascii=False, indent=2)
+    path.write_text(message_json, encoding="utf-8")
+
+
+def load_messages(path: Path) -> list[ChatCompletionMessageParam]:
+    messages_json = path.read_text(encoding="utf-8")
+    messages = json.loads(messages_json)
+
+    if type(messages) is not list:
+        raise RuntimeError("保存的messages数据解析失败，顶层无法解析为列表")
+    for message in messages:
+        if type(message) is not dict:
+            raise RuntimeError(f"保存的messages数据解析失败，数据 {message} 无法解析为字典")
+
+    return messages
+
 
 ADD_TOOL: ChatCompletionFunctionToolParam = {
     "type": "function",
@@ -100,6 +124,26 @@ def main() -> None:
         })
 
         print(json.dumps(message, ensure_ascii=False, indent=2))
+
+        # messages持久化
+
+        project_path = Path(__file__).resolve().parents[2]
+
+        snapshot_path = (
+            project_path
+            / "experiments-data"
+            / "m0_tool_messages.json"
+        )
+
+        save_message(snapshot_path, message)
+        restored_messages = load_messages(snapshot_path)
+
+        assert restored_messages == message
+
+        print("消息保存与恢复一致")
+        print("消息保存位置:", snapshot_path)
+
+        message = restored_messages
 
         # 大模型第二次调用
         final_response = client.chat.completions.create(

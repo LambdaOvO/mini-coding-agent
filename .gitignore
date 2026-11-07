@@ -12,3 +12,5 @@ wheels/
 
 # jetbrans
 .idea/
+
+/experiments-data/
