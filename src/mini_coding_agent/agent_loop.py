@@ -2,9 +2,9 @@ import json
 from openai.types.chat import ChatCompletionMessageParam
 
 from mini_coding_agent.model_client import request_model
-from mini_coding_agent.calculator import execute_tool
+from mini_coding_agent.tool_registry import execute_tool
 
-def run_agent(prompt, tools, model, base_url, max_model_calls=5):
+def run_agent(prompt, tools, model, base_url, workspace_root, max_model_calls=5):
     messages: list[ChatCompletionMessageParam] = [
         {"role": "user", "content": prompt},
     ]
@@ -28,7 +28,7 @@ def run_agent(prompt, tools, model, base_url, max_model_calls=5):
 
             print(f"工具调用请求 {name}: {arguments}")
 
-            result = execute_tool(name, arguments)
+            result = execute_tool(name, arguments, workspace_root)
 
             messages.append({
                 "role": "tool",

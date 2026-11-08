@@ -4,8 +4,18 @@ def add(a: int, b: int) -> int:
     return a + b
 
 
+def multiply(a: int, b: int) -> int:
+    return a * b
+
+
+TOOL_HANDLERS = {
+    "add": add,
+    "multiply": multiply,
+}
+
 def execute_tool(name: str, arguments_json: str) -> dict[str, object]:
-    if name != "add":
+
+    if name not in TOOL_HANDLERS:
         return {"ok": False, "error": f"未知工具 {name}"}
 
     try:
@@ -22,7 +32,9 @@ def execute_tool(name: str, arguments_json: str) -> dict[str, object]:
     if type(arguments["a"]) is not int or type(arguments["b"]) is not int:
         return {"ok": False, "error": f"arguments_json:{arguments_json} 中a或b参数不是整数类型"}
 
-    result = add(arguments["a"], arguments["b"])
+    handler = TOOL_HANDLERS.get(name)
+
+    result = handler(arguments["a"], arguments["b"])
 
     return {"ok": True, "result": result}
 

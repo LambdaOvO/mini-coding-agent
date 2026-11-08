@@ -36,7 +36,7 @@ ADD_TOOL: ChatCompletionFunctionToolParam = {
     "type": "function",
     "function":{
         "name": "add",
-        "description": "计算两个整数之和。",
+        "description": "计算两个整数之和（加法）。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -48,7 +48,24 @@ ADD_TOOL: ChatCompletionFunctionToolParam = {
         },
 
     }
-    
+}
+
+MULTIPLY_TOOL: ChatCompletionFunctionToolParam = {
+    "type": "function",
+    "function":{
+        "name": "multiply",
+        "description": "计算两个整数之积（乘法）。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "a": {"type": "integer", "description": "第一个整数"},
+                "b": {"type": "integer", "description": "第二个整数"},
+            },
+            "required": ["a", "b"],
+            "additionalProperties": False,
+        },
+
+    }
 }
 
 
@@ -65,7 +82,7 @@ def main() -> None:
         response = client.chat.completions.create(
             model="deepseek-flash",
             messages=message,
-            tools=[ADD_TOOL],
+            tools=[ADD_TOOL, MULTIPLY_TOOL],
             tool_choice={
                 "type": "function",
                 "function": {"name": "add"},
