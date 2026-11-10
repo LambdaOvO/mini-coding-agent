@@ -14,3 +14,8 @@ wheels/
 .idea/
 
 /experiments-data/
+
+# Local credentials
+.env
+.env.*
+!.env.example

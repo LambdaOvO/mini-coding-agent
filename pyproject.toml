@@ -1,7 +1,7 @@
 [project]
 name = "mini-coding-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "A small CLI coding agent with explicit tools, reviewed file edits, and local command execution."
 readme = "README.md"
 authors = [
     { name = "LambdaOvO", email = "2499487471@qq.com" }
@@ -22,3 +22,6 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

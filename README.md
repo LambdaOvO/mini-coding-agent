@@ -2,127 +2,166 @@
 
 # Mini Coding Agent
 
-**从一次模型调用，到可验证的代码修改闭环。**
+**一个可以在终端中读取、创建、修改代码并运行项目命令的 mini agent。**
 
-用 Python 亲手构建一个面向本地代码仓库的个人 Coding Agent。
-
-![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)
-![uv](https://img.shields.io/badge/Package_Manager-uv-DE5FE9?style=flat-square)
-![CLI](https://img.shields.io/badge/Interface-CLI-334155?style=flat-square)
-![Stage](https://img.shields.io/badge/Stage-M0_%C2%B7_In_Progress-D97706?style=flat-square)
-
-[项目介绍](#about) · [设计重点](#design) · [快速开始](#quick-start) · [开发路线](#roadmap) · [设计文档](DESIGN.md)
+Python 3.12+ · OpenAI-compatible SDK · DeepSeek · Windows 原生优先
 
 </div>
 
-> **开发状态：M0 · 环境与协议实验**
->
-> 当前已完成 Python 包与 CLI 入口的初始化，运行后输出问候语。配置加载、模型接入、工具调用和 Agent Loop 尚未实现。下文的架构与能力描述为设计目标，具体进度见开发路线。
+## 能做什么
 
-<a id="about"></a>
+- 用自然语言描述需求，在交互式终端持续对话，或执行一次任务后退出。
+- 列目录、按关键字搜索代码、分段读取文件。
+- 创建文件和父目录，精确替换已有代码；修改前显示 Diff。
+- 运行你批准的测试、构建、语法检查等项目命令，并把结果交给模型继续修复。
+- 修改前检查文件版本，防止覆盖等待确认期间的外部编辑。
+- 默认只读；编辑和命令通过启动参数显式启用。
+- 拒绝操作立即停止本轮；Ctrl+C 中断当前任务并回收正在执行的命令。
+- 不使用 Agent 框架，核心循环、工具分发、权限和进程管理都在源码中。
 
-## 为什么做这个项目
+这是面向自己理解的本地小项目的实现，不是完整复刻 Claude Code。原来的固定 demo 检查保留在教学示例中，正式 CLI 使用通用 `run_command`，不要求你预先编写专用验证脚本。
 
-一个 Coding Agent，需要把用户需求变成一系列真实行动：理解代码、选择工具、修改文件、运行检查，再根据结果继续推进。
+## 快速开始：Windows PowerShell
 
-这个项目希望把其中的机制逐步实现并解释清楚：模型如何请求工具，程序如何校验和执行，结果如何回到下一轮请求，以及一次任务凭什么被判定为完成。
-
-技术主线采用 **Python + OpenAI Python SDK + DeepSeek**，自行实现单 Agent 运行循环。开发从小型 Python 练习仓库开始，逐步补齐变更保护、上下文管理和中断恢复，最终形成可用于个人项目的本地 CLI。
-
-<a id="design"></a>
-
-## 设计重点
-
-以下是项目计划逐步实现的能力。
-
-| 方向 | 关注的问题 | 设计目标 |
-| :--- | :--- | :--- |
-| **Agent Loop** | 一次需求如何推进为多轮行动？ | 明确消息流、工具批次、调用预算与停止条件 |
-| **工具协议** | 模型生成参数后，程序应做什么？ | 分开参数校验、权限判断、实际执行与结果反馈 |
-| **文件编辑** | 如何保护用户和 IDE 的并发修改？ | 基于已读取版本编辑，冲突时拒绝覆盖，保留可审阅 Diff |
-| **执行与验证** | 命令退出后，怎样判断任务完成？ | 记录退出码、输出和验证证据，让结论关联实际代码状态 |
-| **上下文与恢复** | 长任务或中断后，如何继续？ | 保留协议完整性，核对真实状态，避免盲目重放副作用 |
-
-### 目标工作流
-
-```mermaid
-flowchart LR
-    U[用户任务] --> R[Agent Runtime]
-    R <--> M[模型适配层]
-    R --> G[参数校验与权限检查]
-    G --> T[文件 / 搜索 / 命令工具]
-    T --> O[执行结果与验证证据]
-    O --> R
-    R --> F[最终报告与 Diff]
-```
-
-模型提出下一步行动，程序负责执行约束；工具结果成为下一轮请求的输入，最终报告依据真实的修改与验证记录生成。
-
-### 平台策略
-
-优先在 **Windows 原生环境**中开发与验收。模型调用、文件操作和运行循环使用公共核心，命令执行等系统差异逐步收敛到适配层。
-
-WSL2 / Linux 是可选运行环境；Docker 是后续按需启用的隔离后端。二者均不作为 Windows 核心功能的默认前置依赖。各平台能力以实际验收结果为准。
-
-<a id="quick-start"></a>
-
-## 快速开始
-
-以下步骤用于运行**当前的初始化入口**。请先准备 Git 与 uv，在 Windows PowerShell 中执行：
+在这个项目的根目录执行：
 
 ```powershell
-git clone https://github.com/LambdaOvO/mini-coding-agent.git
-cd mini-coding-agent
 uv sync
-uv run mini-coding-agent
+$env:DEEPSEEK_API_KEY = "你的 DeepSeek 密钥"
+uv run mini-coding-agent --workspace "D:\projects\my-app" --allow-edit --allow-commands
 ```
 
-预期输出：
+这会进入交互模式。输入任务，例如：
 
 ```text
-Hello from mini-coding-agent!
+定位订单总价的计算代码，修复单价乘数量的问题。只修改相关文件，
+如果项目已有测试就运行相关测试，然后告诉我实际改了什么。
 ```
 
-项目以 Python 3.12 为初始基线，通过 `pyproject.toml` 和 `uv.lock` 管理依赖。当前入口无需模型密钥；模型接入完成后，将补充凭据配置和问答示例。
+模型会自主搜索、读取和提出操作。文件写入前显示 Diff，命令执行前显示完整参数、工作目录和时限。输入 `y` 批准，其他输入或直接回车拒绝。
 
-<a id="roadmap"></a>
+也可以只执行一次任务：
 
-## 开发路线
-
-每个阶段都按「理解原理 → 亲自编码 → 本地验证 → 代码审查」推进。
-
-| 阶段 | 目标 | 状态 |
-| :--- | :--- | :--- |
-| **M0 · 环境与协议实验** | 配置加载、普通模型调用、计算工具往返、消息序列化 | **进行中：包与入口已初始化** |
-| **M1 · 只读 Agent** | 自主循环、工具注册、文件读取与检索、路径门禁 | 计划中 |
-| **M2 · 修改与验证闭环** | 精确编辑、受控命令、Diff 与基础验证记录 | 计划中 |
-| **M3 · 个人项目能力** | 变更保护、范围授权、计划与跨文件任务 | 计划中 |
-| **M4–M5 · 会话与上下文** | 持久化、状态恢复、上下文预算与压缩 | 计划中 |
-| **M6–M7 · 运行可靠性** | 中断核对、有界重试、平台执行适配与可选隔离 | 计划中 |
-| **M8 · 验收与交付** | 固定评测、安装说明、使用文档与代表任务演示 | 计划中 |
-| **M9 · 按需扩展** | 根据实际问题评估 LSP、MCP、多模型等能力 | 可选 |
-
-首个完整闭环的目标：在开发者准备的练习仓库中，完成一次「测试失败 → 读取代码 → 精确修改 → 重新验证 → 报告结果」。
-
-## 当前目录
-
-```text
-mini-coding-agent/
-├── src/
-│   └── mini_coding_agent/
-│       └── __init__.py     # 当前 CLI 入口
-├── .gitignore
-├── .python-version        # Python 3.12 基线
-├── DESIGN.md              # 架构、接口、阶段与导师协作约定
-├── pyproject.toml         # 项目元数据、依赖与命令入口
-├── README.md
-└── uv.lock                # 依赖锁文件
+```powershell
+uv run mini-coding-agent "为项目增加一个 CSV 导出功能，并检查实现" --workspace "D:\projects\my-app" --allow-edit --allow-commands
 ```
 
-只在推进到相应阶段时添加所需模块，目录随实际能力演进。
+只读分析：
 
-## 开发方式
+```powershell
+uv run mini-coding-agent "分析登录逻辑，列出相关文件和调用关系" --workspace "D:\projects\my-app"
+```
 
-核心代码由开发者亲自编写、运行和修改。AI 作为导师与代码审查者，协助解释原理、拆分小目标、分析问题和设计验收方法。
+创建小项目时，先由你准备一个空目录，再将它作为工作区传入。Agent 可以在其中创建文件和子目录。
 
-[DESIGN.md](DESIGN.md) 是本项目的统一设计依据，包含模块职责、接口建议、M0–M9 实施顺序与协作约定。README 随实际进度更新，已实现功能与设计目标分别说明。
+### 密钥与模型配置
+
+PyCharm 某个运行配置中的环境变量不会自动出现在独立 PowerShell 中。可直接设置当前终端的环境变量，也可显式加载文件：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env 填入密钥，再启动：
+uv run mini-coding-agent --env-file .env --workspace "D:\projects\my-app" --allow-edit --allow-commands
+```
+
+只在传入 `--env-file` 时加载；已有进程环境变量优先。环境文件支持简单的 `NAME=value`、引号和独立注释行，不执行脚本，不做变量展开。不要提交真实密钥。
+
+```powershell
+uv run mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.com --workspace "D:\projects\my-app"
+```
+
+也可设置 `DEEPSEEK_MODEL` 和 `DEEPSEEK_BASE_URL`。默认关闭 thinking，沿用已验证的 Chat Completions 工具协议。
+
+## 交互命令
+
+| 输入 | 作用 |
+|---|---|
+| 普通文本 | 提交新任务，沿用当前对话上下文 |
+| `/diff` | 查看本会话按操作顺序记录的文件修改 |
+| `/clear` | 清除内存对话、读取版本和修改记录；不撤销磁盘文件 |
+| `/help` | 显示交互命令 |
+| `/exit` 或 `/quit` | 退出 |
+| Ctrl+C | 中断当前轮；在输入提示处不会直接关闭终端 |
+| Ctrl+D / Windows Ctrl+Z 后回车 | 结束输入并退出 |
+
+会话保存在当前进程内存中，退出后不恢复；不会自动重放上次的文件写入或命令。
+
+## 参数
+
+```powershell
+uv run mini-coding-agent --help
+```
+
+| 参数 | 作用 |
+|---|---|
+| `task` | 可选，提供则单次执行；省略则交互对话 |
+| `--workspace PATH` | 工作区，默认当前目录，启动后固定 |
+| `--allow-edit` | 启用创建和编辑，仍逐次审批 |
+| `--allow-commands` | 启用本地命令，仍逐次审批 |
+| `--yes` | 自动批准已启用的操作，仅用于你信任的项目 |
+| `--env-file PATH` | 显式加载环境文件 |
+| `--model NAME` / `--base-url URL` | 配置模型与兼容地址 |
+| `--max-model-calls N` | 每轮模型请求上限，默认 30；SDK 网络重试最多 1 次 |
+| `--max-tool-calls N` | 每轮工具调用上限，默认 80 |
+| `--pass-env NAME` | 允许项目命令继承额外环境变量，可重复 |
+| `--debug` | 显示经过基础脱敏的工具参数 |
+
+一次任务的退出码：`0` 表示模型正常结束回答，`1` 表示错误或预算耗尽，`2` 表示配置/参数错误，`3` 表示用户拒绝，`130` 表示中断。**退出码 0 不自动意味着所有业务需求或测试已经通过，应查看实际命令结果和 Diff。**
+
+## 命令执行方式
+
+模型请求的是参数数组，例如：
+
+```json
+{"argv": ["python", "-m", "pytest", "-q"], "cwd": ".", "timeout": 30}
+```
+
+- `python` 默认映射到 Agent 当前解释器。目标项目有自己的依赖时，模型可以使用项目中独立虚拟环境的 Python 路径。
+- Windows 的 `npm.cmd`、`.bat`、`.ps1` 等入口需要显式使用 `cmd.exe` 或 `powershell.exe`，完整参数仍需你批准。
+- 子进程只继承一组基本环境变量，模型密钥不自动传入。项目需要额外变量时使用 `--pass-env`。
+- 默认 30 秒，允许 1～120 秒；持续消费 stdout/stderr，分别回传有限长的预览。
+- 超时、取消、输出超过预算时停止。Windows 使用 Job Object，POSIX 使用进程组清理所属进程。
+- 只支持短命令，后台服务会被清理。不会自动安装依赖或将“启动成功”当作业务验证通过。
+
+**本地命令具有当前账户权限。文件工具的工作区门禁不能隔离命令的文件、网络或系统访问，因此请仅在你信任的项目中启用命令。无需 WSL2 或 Docker，但也不提供容器级隔离。**
+
+## 文件与搜索边界
+
+- 文件工具统一拒绝越界路径、Windows 设备名/备用数据流、符号链接、junction，以及常见凭据目录和秘密文件。
+- 文件读取、创建和编辑支持不超过 1 MiB 的 UTF-8 文本；读取可用行范围分段，默认每次 200 行、最多 16000 字符。
+- 精确编辑要求来自真实读取的完整文件哈希、唯一旧文本，并在确认后再次核对版本。保留 UTF-8 BOM、已有换行风格和基本权限模式。
+- 创建文件采用排他打开，已有同名文件不会被覆盖。
+- 搜索区分大小写、按字面量匹配，默认最多返回 30 条，支持文件过滤；只扫描不超过 256 KiB 的 UTF-8 文件，并有文件数量和时间预算。
+- Git 仓库根目录且 Git 可用时，搜索使用 Git 的忽略规则；其他目录使用内置排除名单。受保护文件即使被 Git 跟踪，也不会通过文件工具读取。
+- 大输出会标记截断；上下文过长时仅移除完整的旧对话轮次，当前轮仍过大则停止。
+- 没有内置任意文件删除、自动撤销、跨重启恢复或无人监督发布。命令可能产生文件工具之外的副作用，审批前应审阅。
+
+目录排除和凭据文件名过滤属于基础保护，不是完整的数据泄漏检测；普通源码中包含的秘密仍应由你在发送给模型前处理。
+
+## 源码阅读顺序
+
+| 顺序 | 文件 | 看什么 |
+|---|---|---|
+| 1 | `cli.py` | 命令行参数、交互输入和创建 Agent |
+| 2 | `agent_loop.py` | messages 如何增长，模型回复如何变成工具执行 |
+| 3 | `tool_registry.py` | Schema 校验、JSON 参数和函数分发 |
+| 4 | `file_tools.py` | 读取版本、Diff、审批、冲突检测、真实写入 |
+| 5 | `search_tools.py` | 如何定位代码并控制返回量 |
+| 6 | `command_tools.py` | 参数数组、环境、输出、超时与取消 |
+| 7 | `processes.py` | Windows Job Object / POSIX 进程组生命周期 |
+| 8 | `model_client.py` | SDK 请求、消息序列化和 API 错误 |
+| 9 | `workspace.py` / `permissions.py` | 路径边界和用户确认 |
+
+更具体的设计和关键代码说明见 [源码阅读指南](docs/IMPLEMENTATION.md)。[DESIGN.md](DESIGN.md) 保留长期设计；它的 M0～M9 清单并不代表当前 mini 版本已实现所有规划。
+
+## 验证
+
+```powershell
+uv run pytest -q
+```
+
+测试覆盖真实文件创建/编辑、CRLF/BOM、外部修改冲突、拒绝操作、分段读取、搜索过滤、参数错误、工具预算和多轮上下文；命令测试真实启动 Python 并检查退出码、超时、输出上限和子进程回收。
+
+端到端测试使用真实 OpenAI SDK 和内存 HTTP 传输模拟兼容 API。测试中的文件操作、CLI 和命令是真实执行的，测试不消耗 DeepSeek 额度，也不证明模型对任意任务都能正确决策。受限 Windows 账户无法创建链接时，对应的真实链接测试会跳过。
+
+默认系统临时目录不可写时，可以指定一个**新的、专用于测试的临时目录**作为 pytest 的 `--basetemp`。不要把已有项目目录当作 basetemp，pytest 会清理它。
