@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from mini_coding_agent.agent_loop import Agent
-from mini_coding_agent.config import load_api_key, load_env_file
+from mini_coding_agent.config import configure_api_key, ensure_api_key, load_env_file
 from mini_coding_agent.permissions import display_text
 
 
@@ -58,7 +58,10 @@ def main() -> int:
     try:
         if args.env_file:
             load_env_file(args.env_file.expanduser().resolve())
-        load_api_key()
+        ensure_api_key()
+    except KeyboardInterrupt:
+        print("\n已取消密钥设置。")
+        return 130
     except (ValueError, OSError) as exc:
         print(display_text(f"配置错误：{exc}"), file=sys.stderr)
         return 2
@@ -91,7 +94,7 @@ def main() -> int:
         result = run(args.task)
         return {"completed": 0, "denied": 3, "cancelled": 130}.get(result.status, 1)
 
-    print("输入任务开始。命令：/help、/diff、/clear、/exit。Ctrl+C 停止当前轮，Ctrl+D/Ctrl+Z 退出。")
+    print("输入任务开始。命令：/help、/key、/diff、/clear、/exit。Ctrl+C 停止当前轮，Ctrl+D/Ctrl+Z 退出。")
     while True:
         try:
             task = input("\n你> ").strip()
@@ -106,7 +109,16 @@ def main() -> int:
         if task in {"/exit", "/quit"}:
             return 0
         if task == "/help":
-            print("/diff 查看本会话按操作顺序记录的修改；/clear 清除上下文（不撤销文件）；/exit 退出。")
+            print("/key 隐藏输入并更换密钥；/diff 查看修改；/clear 清除上下文（不撤销文件）；/exit 退出。")
+        elif task == "/key":
+            try:
+                configure_api_key()
+            except KeyboardInterrupt:
+                print("\n已中断密钥设置。")
+            except (ValueError, OSError) as exc:
+                print(f"密钥设置失败：{exc}")
+        elif task.split(maxsplit=1)[0] == "/key":
+            print("请只输入 /key，然后在隐藏提示中输入密钥，不要把密钥写在命令后面。")
         elif task == "/clear":
             agent.clear()
             print("已清除会话上下文和读取版本记录，磁盘文件保持当前状态。")

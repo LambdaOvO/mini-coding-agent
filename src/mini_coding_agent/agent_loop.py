@@ -78,6 +78,7 @@ class Agent:
 
     def _trim_history(self):
         # 只删除完整的旧对话轮次，不切断 assistant tool_calls 与 tool 回复。
+        # 相当于压缩上下文（暴力）
         while self._size() > self.max_context_chars // 2:
             starts = [i for i, msg in enumerate(self.messages) if msg["role"] == "user"]
             if len(starts) < 2:

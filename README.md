@@ -27,11 +27,12 @@ Python 3.12+ · OpenAI-compatible SDK · DeepSeek · Windows 原生优先
 
 ```powershell
 uv sync
-$env:DEEPSEEK_API_KEY = "你的 DeepSeek 密钥"
 uv run mini-coding-agent --workspace "D:\projects\my-app" --allow-edit --allow-commands
 ```
 
-这会进入交互模式。输入任务，例如：
+首次启动且没有可用密钥时，程序会提示输入 DeepSeek API Key，输入内容不会显示。随后可选择是否保存到当前用户的 Windows 凭据管理器：输入 `y` 保存，下次自动读取；直接回车或输入 `n` 仅用于本次会话。
+
+完成配置后进入交互模式。输入任务，例如：
 
 ```text
 定位订单总价的计算代码，修复单价乘数量的问题。只修改相关文件，
@@ -56,7 +57,17 @@ uv run mini-coding-agent "分析登录逻辑，列出相关文件和调用关系
 
 ### 密钥与模型配置
 
-PyCharm 某个运行配置中的环境变量不会自动出现在独立 PowerShell 中。可直接设置当前终端的环境变量，也可显式加载文件：
+启动时按以下顺序取得密钥：有效的 `DEEPSEEK_API_KEY` 环境变量 → Windows 凭据管理器中的保存项 → 终端隐藏输入。通过 `--env-file` 加载的值也属于当前进程环境变量。
+
+交互模式中只输入 `/key`，即可在隐藏提示中更换密钥。留空取消，保留原配置；选择不保存时不会覆盖已有的 Windows 保存项。`--yes` 不会自动同意保存密钥。配置成功表示本地已取得密钥，是否有效要以随后的 API 请求结果为准。
+
+Windows 保存项名称为 `mini-coding-agent/deepseek-api-key`，由系统管理，属于同一台电脑上的当前用户；可在 Windows「凭据管理器 → Windows 凭据 → 普通凭据」中删除。其他平台支持会话内隐藏输入和环境变量，不提供内置持久保存。
+
+仍可直接设置当前终端的环境变量，或显式加载文件：
+
+```powershell
+$env:DEEPSEEK_API_KEY = "你的 DeepSeek 密钥"
+```
 
 ```powershell
 Copy-Item .env.example .env
@@ -64,7 +75,9 @@ Copy-Item .env.example .env
 uv run mini-coding-agent --env-file .env --workspace "D:\projects\my-app" --allow-edit --allow-commands
 ```
 
-只在传入 `--env-file` 时加载；已有进程环境变量优先。环境文件支持简单的 `NAME=value`、引号和独立注释行，不执行脚本，不做变量展开。不要提交真实密钥。
+只在传入 `--env-file` 时加载；已有进程环境变量优先。环境文件支持简单的 `NAME=value`、引号和独立注释行，不执行脚本，不做变量展开。不要提交真实密钥。PyCharm 某个运行配置中的环境变量不会自动出现在独立 PowerShell 中。
+
+隐藏输入需要交互式终端；使用管道、重定向或不支持隐藏输入的 IDE 控制台时，请通过环境变量、已保存凭据或 `--env-file` 提供密钥。
 
 ```powershell
 uv run mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.com --workspace "D:\projects\my-app"
@@ -77,6 +90,7 @@ uv run mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.
 | 输入 | 作用 |
 |---|---|
 | 普通文本 | 提交新任务，沿用当前对话上下文 |
+| `/key` | 隐藏输入并更换 DeepSeek 密钥，可选择保存；不要在命令后附加密钥 |
 | `/diff` | 查看本会话按操作顺序记录的文件修改 |
 | `/clear` | 清除内存对话、读取版本和修改记录；不撤销磁盘文件 |
 | `/help` | 显示交互命令 |
@@ -151,6 +165,7 @@ uv run mini-coding-agent --help
 | 7 | `processes.py` | Windows Job Object / POSIX 进程组生命周期 |
 | 8 | `model_client.py` | SDK 请求、消息序列化和 API 错误 |
 | 9 | `workspace.py` / `permissions.py` | 路径边界和用户确认 |
+| 配置 | `config.py` / `credential_store.py` | 隐藏输入、密钥来源优先级、Windows 凭据保存 |
 
 更具体的设计和关键代码说明见 [源码阅读指南](docs/IMPLEMENTATION.md)。[DESIGN.md](DESIGN.md) 保留长期设计；它的 M0～M9 清单并不代表当前 mini 版本已实现所有规划。
 
@@ -163,5 +178,7 @@ uv run pytest -q
 测试覆盖真实文件创建/编辑、CRLF/BOM、外部修改冲突、拒绝操作、分段读取、搜索过滤、参数错误、工具预算和多轮上下文；命令测试真实启动 Python 并检查退出码、超时、输出上限和子进程回收。
 
 端到端测试使用真实 OpenAI SDK 和内存 HTTP 传输模拟兼容 API。测试中的文件操作、CLI 和命令是真实执行的，测试不消耗 DeepSeek 额度，也不证明模型对任意任务都能正确决策。受限 Windows 账户无法创建链接时，对应的真实链接测试会跳过。
+
+密钥测试使用假密钥和模拟的 Windows 凭据 API，验证首次配置、恢复保存项、会话内更换及认证请求；不会读写你的真实凭据保存项。
 
 默认系统临时目录不可写时，可以指定一个**新的、专用于测试的临时目录**作为 pytest 的 `--basetemp`。不要把已有项目目录当作 basetemp，pytest 会清理它。

@@ -10,8 +10,10 @@ from contextlib import redirect_stdout, redirect_stderr
 from unittest.mock import patch
 
 import httpx2 as httpx
+import pytest
 
 from mini_coding_agent import model_client
+from mini_coding_agent import config
 from mini_coding_agent.cli import main
 
 from mini_coding_agent.config import load_env_file
@@ -31,13 +33,15 @@ def calls(*items):
 
 
 @contextmanager
-def fake_api(responder):
+def fake_api(responder, expected_key=None):
     requests = []
     errors = []
 
     def handle(request):
         try:
             assert request.url.path == "/v1/chat/completions"
+            if expected_key is not None:
+                assert request.headers["Authorization"] == f"Bearer {expected_key}"
             body = json.loads(request.content)
             assert body["thinking"] == {"type": "disabled"}
             requests.append(body)
@@ -66,7 +70,7 @@ def fake_api(responder):
     assert not errors, errors
 
 
-def invoke(root, base_url=None, *options, task=None, input_text=""):
+def invoke(root, base_url=None, *options, task=None, input_text="", api_key="offline-test-key"):
     argv = [
         "mini-coding-agent",
         "--workspace", str(root), *options,
@@ -77,7 +81,7 @@ def invoke(root, base_url=None, *options, task=None, input_text=""):
         argv.append(task)
     stdout, stderr = io.StringIO(), io.StringIO()
     with (
-        patch.dict(os.environ, {"DEEPSEEK_API_KEY": "offline-test-key"}),
+        patch.dict(os.environ, {"DEEPSEEK_API_KEY": api_key or ""}),
         patch.object(sys, "argv", argv),
         patch.object(sys, "stdin", io.StringIO(input_text)),
         redirect_stdout(stdout), redirect_stderr(stderr),
@@ -210,3 +214,54 @@ def test_explicit_env_file_preserves_existing_values(tmp_path, monkeypatch):
     load_env_file(path)
     assert os.environ["DEEPSEEK_API_KEY"] == "existing-key"
     assert os.environ["DEEPSEEK_MODEL"] == "offline-model"
+
+
+def test_cli_configures_missing_key_before_first_model_request(tmp_path, monkeypatch):
+    key = "configured-in-agent-key"
+    saved = []
+    monkeypatch.setattr(config, "_read_hidden_key", lambda: key)
+    monkeypatch.setattr(config.credential_store, "available", lambda: True)
+    monkeypatch.setattr(config.credential_store, "load_saved_key", lambda: None)
+    monkeypatch.setattr(config.credential_store, "save_key", saved.append)
+
+    def respond(body, _):
+        assert key not in json.dumps(body)
+        assert [m["content"] for m in body["messages"] if m["role"] == "user"] == ["你好"]
+        return {"role": "assistant", "content": "可以开始任务。"}
+
+    with fake_api(respond, expected_key=key) as (url, requests):
+        process = invoke(
+            tmp_path, url, api_key=None, input_text="y\n你好\n/exit\n",
+        )
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert saved == [key] and len(requests) == 1
+    assert key not in process.stdout + process.stderr
+
+
+def test_key_command_changes_auth_without_entering_chat_history(tmp_path, monkeypatch):
+    key = "replacement-session-key"
+    monkeypatch.setattr(config, "_read_hidden_key", lambda: key)
+    monkeypatch.setattr(config.credential_store, "available", lambda: True)
+    monkeypatch.setattr(config.credential_store, "save_key", lambda _: pytest.fail("不能保存"))
+
+    def respond(body, _):
+        assert key not in json.dumps(body)
+        assert [m["content"] for m in body["messages"] if m["role"] == "user"] == ["继续"]
+        return {"role": "assistant", "content": "新配置已用于本次请求。"}
+
+    with fake_api(respond, expected_key=key) as (url, requests):
+        process = invoke(tmp_path, url, input_text="/key\nn\n继续\n/exit\n")
+    assert process.returncode == 0, process.stdout + process.stderr
+    assert len(requests) == 1
+    assert key not in process.stdout + process.stderr
+
+
+@pytest.mark.parametrize("separator", [" ", "\t"])
+def test_key_command_does_not_send_inline_credentials_to_model(tmp_path, separator):
+    key = "must-not-send-this-secret"
+    with fake_api(lambda *_: pytest.fail("密钥设置命令不能发送给模型")) as (url, requests):
+        process = invoke(tmp_path, url, input_text=f"/key{separator}{key}\n/exit\n")
+    assert process.returncode == 0
+    assert requests == []
+    assert "请只输入 /key" in process.stdout
+    assert key not in process.stdout + process.stderr

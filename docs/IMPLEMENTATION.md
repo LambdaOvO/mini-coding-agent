@@ -18,6 +18,20 @@
 
 模型并没有运行 Python 函数。模型只返回工具名称和 JSON 参数；真正的副作用来自应用里的工具函数。
 
+### 启动前如何取得密钥
+
+`cli.main()` 在创建 Agent 前调用 `config.ensure_api_key()`：先读取已有环境变量，再尝试 Windows 保存项，最后进入 `configure_api_key()` 提示输入。`--help` 会由 argparse 提前退出，不需要配置密钥。
+
+`configure_api_key()` 用 `getpass.getpass()` 隐藏输入；不支持隐藏输入时停止配置，不退回明文输入。密钥不会作为任务加入 messages。交互命令 `/key` 也只在 CLI 中调用这个函数，不经过 Agent 或模型。
+
+取得密钥后写入 `os.environ["DEEPSEEK_API_KEY"]`。这是当前 Python 进程的环境变量，不会给外部 PowerShell 设置永久环境变量。`model_client.request_model()` 每次请求仍通过原来的 `load_api_key()` 读取，因此下一次请求会使用新密钥，无须重建 Agent，也不会清空对话。
+
+如果用户选择保存，`credential_store.save_key()` 通过标准库 `ctypes` 调用 Windows 的 `CredWriteW`；下一次启动由 `load_saved_key()` 调用 `CredReadW` 取回。保存的标识是 `mini-coding-agent/deepseek-api-key`，密钥转为 UTF-8 字节放在 CredentialBlob 中。`_Credential` 描述的是 Windows API 要求的 C 结构，不是聊天消息。读取完成后 `CredFree` 释放系统分配的缓冲区。
+
+只有明确输入 `y` 才持久保存。保存失败仍可用于当前会话；留空或中断输入时保留原密钥。环境变量的优先级高于保存项，所以启动终端里已有的旧密钥也会优先使用。保存项属于当前用户的本机凭据，不属于所有用户共享的机器配置。
+
+配置和端到端测试只使用假密钥与模拟凭据 API，不写入真实 Windows 凭据管理器；SDK 测试检查认证头已经更新，同时检查密钥没有进入聊天消息或程序输出。
+
 ## 2. 为什么使用一个 Agent 实例
 
 原来每次调用 run_agent() 都创建新消息列表，适合一次演示，但下一句话无法继续前一轮任务。
