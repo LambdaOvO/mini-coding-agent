@@ -2,6 +2,23 @@
 
 这份指南描述当前 mini 实现。目标是让一个终端程序能连续接收任务，自主选择工具，对真实代码做有边界的修改，再把执行结果交回模型；不引入 Agent 框架、数据库或多 Agent。
 
+## 终端命令为什么能离开源码运行
+
+`pyproject.toml` 已声明标准的命令入口：
+
+```toml
+[project.scripts]
+mini-coding-agent = "mini_coding_agent:main"
+```
+
+安装器根据它生成 Windows 的 `mini-coding-agent.exe`。这个入口使用已安装工具环境中的 Python，导入 `mini_coding_agent` 包，再调用 `__init__.py` 的 `main()`，由它进入 `cli.main()`。因此不需要额外编写一个启动脚本，也不用把工作目录切到源码仓库。
+
+`uv build --wheel` 把可安装的包放到 `dist`；`uv tool install` 把包和运行依赖安装到持久、独立的工具环境，并把命令入口放到工具的 bin 目录。安装采用普通模式，不使用 `--editable`，所以运行时读取的是安装后的副本。原项目的 `.venv`、examples 和测试文件都不属于这个运行入口。
+
+启动器不改变当前工作目录。`--workspace` 未提供时，`cli.build_parser()` 的 `Path.cwd()` 就是用户执行命令时所在的目录，因此可以直接在目标项目目录启动。
+
+发布的依赖版本由 `uv.lock` 导出为 `requirements.lock.txt`，安装时通过 `--constraints` 约束。源码改动后需要重新构建、安装；已安装程序不会自动读取开发目录的新代码。
+
 ## 1. 一条用户输入如何变成实际操作
 
 入口链路：

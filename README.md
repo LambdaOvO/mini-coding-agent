@@ -21,41 +21,111 @@ Python 3.12+ · OpenAI-compatible SDK · DeepSeek · Windows 原生优先
 
 这是面向自己理解的本地小项目的实现，不是完整复刻 Claude Code。原来的固定 demo 检查保留在教学示例中，正式 CLI 使用通用 `run_command`，不要求你预先编写专用验证脚本。
 
-## 快速开始：Windows PowerShell
+## 快速开始：从 GitHub Release 安装
 
-在这个项目的根目录执行：
+以下流程面向 Windows PowerShell。下载发布附件即可安装，无须克隆源码仓库；安装时需要 uv、Python 3.12，以及用于下载依赖的网络连接。发布附件是 Python wheel 安装包，运行环境由工具安装器管理。
+
+### 1. 准备 uv 和 Python
+
+按照 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装 uv，重新打开 PowerShell，检查是否可用：
 
 ```powershell
-uv sync
-uv run mini-coding-agent --workspace "D:\projects\my-app" --allow-edit --allow-commands
+uv --version
 ```
 
-首次启动且没有可用密钥时，程序会提示输入 DeepSeek API Key，输入内容不会显示。随后可选择是否保存到当前用户的 Windows 凭据管理器：输入 `y` 保存，下次自动读取；直接回车或输入 `n` 仅用于本次会话。
+没有 Python 3.12 时，可通过 uv 安装；已有可用的 3.12 时跳过这一步：
 
-完成配置后进入交互模式。输入任务，例如：
+```powershell
+uv python install 3.12
+```
+
+### 2. 下载发布附件
+
+打开 [Releases 页面](https://github.com/LambdaOvO/mini-coding-agent/releases)，在所选版本的 **Assets** 中下载下面两个文件，并放在同一个目录：
+
+```text
+mini_coding_agent-0.1.0-py3-none-any.whl
+requirements.lock.txt
+```
+
+此安装流程使用手动上传的两个附件；GitHub 自动提供的 `Source code (zip)` 和 `Source code (tar.gz)` 是源码归档。其他版本请使用该版本配套的 wheel 和依赖文件。
+
+### 3. 安装命令行工具
+
+在下载目录打开 PowerShell，执行：
+
+```powershell
+uv tool install --python 3.12 --constraints .\requirements.lock.txt .\mini_coding_agent-0.1.0-py3-none-any.whl
+mini-coding-agent --help
+```
+
+`--python 3.12` 选择工具环境的解释器，`--constraints` 限制运行依赖版本，最后的 `.whl` 是要安装的程序。`.\` 表示当前目录，因此运行安装命令时，这两个文件应位于终端的当前目录。
+
+安装器会生成 `mini-coding-agent.exe` 命令入口。之后在任意目录都可直接使用，无须 `uv run`，也不依赖源码仓库或它的 `.venv`。
+
+如果提示找不到命令，执行 `uv tool update-shell`，然后重新打开 PowerShell 或 PyCharm 的终端。安装方式见 [uv 工具安装文档](https://docs.astral.sh/uv/guides/tools/)。
+
+### 4. 启动并配置密钥
+
+先准备一个已经存在的目标项目目录，然后启动：
+
+```powershell
+# 指定目录
+mini-coding-agent --workspace "D:\projects\my-app" --allow-edit --allow-commands
+
+# 当前目录
+mini-coding-agent --allow-edit --allow-commands
+```
+
+
+
+首次启动且没有可用密钥时，会显示：
+
+```text
+DeepSeek API Key（输入隐藏，留空取消）：
+保存到当前用户的 Windows 凭据管理器，下次自动读取？[y/N]
+```
+
+使用者填写自己的 DeepSeek API Key，输入内容不会显示。输入 `y` 将其保存到 Windows 凭据管理器；直接回车或输入 `n` 仅用于本次会话。保存操作不会修改系统环境变量。发布附件不包含开发者的密钥。
+
+也可以先进入目标项目目录，再执行 `mini-coding-agent --allow-edit --allow-commands`；省略 `--workspace` 时使用当前目录。
+
+### 5. 提交任务
+
+进入交互模式后，用自然语言描述需求，例如：
 
 ```text
 定位订单总价的计算代码，修复单价乘数量的问题。只修改相关文件，
 如果项目已有测试就运行相关测试，然后告诉我实际改了什么。
 ```
 
-模型会自主搜索、读取和提出操作。文件写入前显示 Diff，命令执行前显示完整参数、工作目录和时限。输入 `y` 批准，其他输入或直接回车拒绝。
+模型会自主搜索、读取和提出操作。文件写入前显示 Diff，命令执行前显示参数、工作目录和时限。输入 `y` 批准，其他输入或直接回车拒绝。
 
-也可以只执行一次任务：
-
-```powershell
-uv run mini-coding-agent "为项目增加一个 CSV 导出功能，并检查实现" --workspace "D:\projects\my-app" --allow-edit --allow-commands
-```
-
-只读分析：
+只读分析时，省略编辑和命令权限：
 
 ```powershell
-uv run mini-coding-agent "分析登录逻辑，列出相关文件和调用关系" --workspace "D:\projects\my-app"
+mini-coding-agent "分析登录逻辑，列出相关文件和调用关系" --workspace "D:\projects\my-app"
 ```
 
-创建小项目时，先由你准备一个空目录，再将它作为工作区传入。Agent 可以在其中创建文件和子目录。
+提供位置参数 `task` 时，执行一次任务后退出；省略时持续对话。交互中使用 `/key` 更换密钥、`/diff` 查看修改、`/exit` 退出。创建小项目时，先由你准备一个空目录，再将它作为工作区传入。
 
-### 密钥与模型配置
+## 更新与卸载
+
+更新时下载新 Release 配套的两个附件，在下载目录重新安装。以下以 `0.1.0` 为例，实际操作时替换为新版本的 wheel 文件名：
+
+```powershell
+uv tool install --force --python 3.12 --constraints .\requirements.lock.txt .\mini_coding_agent-0.1.0-py3-none-any.whl
+```
+
+卸载命令入口和对应的独立工具环境：
+
+```powershell
+uv tool uninstall mini-coding-agent
+```
+
+卸载不会删除目标项目文件，也不会清除 Windows 中已保存的密钥。需要清除密钥时，打开「控制面板 → 用户账户 → 凭据管理器 → Windows 凭据」，删除普通凭据 `mini-coding-agent/deepseek-api-key`。
+
+## 密钥与模型配置
 
 启动时按以下顺序取得密钥：有效的 `DEEPSEEK_API_KEY` 环境变量 → Windows 凭据管理器中的保存项 → 终端隐藏输入。通过 `--env-file` 加载的值也属于当前进程环境变量。
 
@@ -69,10 +139,16 @@ Windows 保存项名称为 `mini-coding-agent/deepseek-api-key`，由系统管�
 $env:DEEPSEEK_API_KEY = "你的 DeepSeek 密钥"
 ```
 
+如需环境文件，可自行创建 `.env` 并填写以下内容；源码仓库也提供 `.env.example` 模板：
+
+```dotenv
+DEEPSEEK_API_KEY=你的DeepSeek密钥
+```
+
+再从该文件所在目录启动：
+
 ```powershell
-Copy-Item .env.example .env
-# 编辑 .env 填入密钥，再启动：
-uv run mini-coding-agent --env-file .env --workspace "D:\projects\my-app" --allow-edit --allow-commands
+mini-coding-agent --env-file .env --workspace "D:\projects\my-app" --allow-edit --allow-commands
 ```
 
 只在传入 `--env-file` 时加载；已有进程环境变量优先。环境文件支持简单的 `NAME=value`、引号和独立注释行，不执行脚本，不做变量展开。不要提交真实密钥。PyCharm 某个运行配置中的环境变量不会自动出现在独立 PowerShell 中。
@@ -80,7 +156,7 @@ uv run mini-coding-agent --env-file .env --workspace "D:\projects\my-app" --allo
 隐藏输入需要交互式终端；使用管道、重定向或不支持隐藏输入的 IDE 控制台时，请通过环境变量、已保存凭据或 `--env-file` 提供密钥。
 
 ```powershell
-uv run mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.com --workspace "D:\projects\my-app"
+mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.com --workspace "D:\projects\my-app"
 ```
 
 也可设置 `DEEPSEEK_MODEL` 和 `DEEPSEEK_BASE_URL`。默认关闭 thinking，沿用已验证的 Chat Completions 工具协议。
@@ -103,7 +179,7 @@ uv run mini-coding-agent --model deepseek-flash --base-url https://api.deepseek.
 ## 参数
 
 ```powershell
-uv run mini-coding-agent --help
+mini-coding-agent --help
 ```
 
 | 参数 | 作用 |
@@ -151,6 +227,26 @@ uv run mini-coding-agent --help
 - 没有内置任意文件删除、自动撤销、跨重启恢复或无人监督发布。命令可能产生文件工具之外的副作用，审批前应审阅。
 
 目录排除和凭据文件名过滤属于基础保护，不是完整的数据泄漏检测；普通源码中包含的秘密仍应由你在发送给模型前处理。
+
+## 源码开发与打包（维护者）
+
+从源码开发时，在仓库根目录执行：
+
+```powershell
+uv sync
+uv run mini-coding-agent --workspace "D:\projects\my-app" --allow-edit --allow-commands
+```
+
+如需把开发后的版本安装到用户工具环境，由你手动执行 `uv tool install --force --python 3.12 .`。普通安装使用源码的副本；后续源码改动需要重新安装才能反映到已安装的命令中。
+
+准备 Release 时，先核对 `pyproject.toml` 中的版本号。当前包版本为 `0.1.0`，可对应 Git 标签 `v0.1.0`。将准备发布的源码及 README 提交、推送到目标分支，再从同一版本源码根目录手动打包：
+
+```powershell
+uv build --wheel
+uv export --frozen --no-dev --no-emit-project --no-hashes --format requirements-txt --output-file dist/requirements.lock.txt
+```
+
+在 GitHub 新建 Release，选择对应标签与目标分支，将 `dist/mini_coding_agent-0.1.0-py3-none-any.whl` 和 `dist/requirements.lock.txt` 作为附件上传，确认版本和附件一致后发布。首次体验版本可标记为 **Pre-release**。标签引用的是远程提交，不包含本地尚未提交或推送的修改；操作说明见 [GitHub Release 官方文档](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 
 ## 源码阅读顺序
 
